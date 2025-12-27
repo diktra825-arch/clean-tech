@@ -36,7 +36,7 @@
             </div>
             
             <div style="border-top: 1px solid #444; margin-top: 2rem; padding-top: 1rem; text-align: center;">
-                <p>&copy; <?php echo date('Y'); ?> CleanTech. All rights reserved.</p>
+                <p>&copy; <?php echo date('Y'); ?> CleanTech. Indika Saputra - 221011402182.</p>
             </div>
         </div>
     </footer>
