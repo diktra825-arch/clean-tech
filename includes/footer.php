@@ -22,7 +22,7 @@
                     <h3 style="margin-bottom: 1rem;">Kontak</h3>
                     <p>Email: info@cleantech.id</p>
                     <p>Telepon: (021) 1234-5678</p>
-                    <p>Alamat: Jl. Contoh No. 123, Jakarta</p>
+                    <p>Alamat: Jl. Kebersihan No.22, Tangerang</p>
                 </div>
                 
                 <div>
