@@ -58,14 +58,26 @@ mysqli_stmt_bind_param(
 
 
 mysqli_stmt_execute($stmt);
+
 $orders_result = mysqli_stmt_get_result($stmt);
 
-// Calculate summary
+// Fetch all orders into array so we can compute totals and iterate safely
+$orders = mysqli_fetch_all($orders_result, MYSQLI_ASSOC);
+if (!is_array($orders)) {
+    $orders = [];
+}
+
+// Calculate summary from fetched orders
+$total_orders = count($orders);
+$total_revenue = array_sum(array_column($orders, 'final_price'));
+$total_discount = array_sum(array_column($orders, 'discount'));
+$average_order_value = $total_orders > 0 ? ($total_revenue / $total_orders) : 0;
+
 $summary = [
-    'total_orders' => 0,
-    'total_revenue' => 0,
-    'total_discount' => 0,
-    'average_order_value' => 0
+    'total_orders' => $total_orders,
+    'total_revenue' => $total_revenue,
+    'total_discount' => $total_discount,
+    'avg_order_value' => $average_order_value
 ];
 
 // Get summary data
@@ -304,7 +316,7 @@ include '../includes/header.php';
         </div>
     </div>
     <div class="card-body">
-        <?php if (mysqli_num_rows($orders_result) > 0): ?>
+        <?php if (!empty($orders)): ?>
             <div class="table-responsive">
                 <table class="table">
                     <thead>
@@ -320,7 +332,7 @@ include '../includes/header.php';
                         </tr>
                     </thead>
                     <tbody>
-                        <?php while ($order = mysqli_fetch_assoc($orders_result)): ?>
+                        <?php foreach ($orders as $order): ?>
                             <tr>
                                 <td><?php echo htmlspecialchars($order['order_code']); ?></td>
                                 <td>
@@ -356,12 +368,12 @@ include '../includes/header.php';
                                     <strong>Rp <?php echo number_format($order['final_price'], 0, ',', '.'); ?></strong>
                                 </td>
                             </tr>
-                        <?php endwhile; ?>
+                        <?php endforeach; ?>
                     </tbody>
                     <tfoot>
                         <tr style="background-color: #f8f9fa; font-weight: bold;">
                             <td colspan="5" style="text-align: right;">Total:</td>
-                            <td>Rp <?php echo number_format(array_sum(array_column(mysqli_fetch_all($orders_result, MYSQLI_ASSOC), 'service_price')), 0, ',', '.'); ?></td>
+                            <td>Rp <?php echo number_format(array_sum(array_column($orders, 'service_price')), 0, ',', '.'); ?></td>
                             <td>Rp <?php echo number_format($summary['total_discount'], 0, ',', '.'); ?></td>
                             <td>Rp <?php echo number_format($summary['total_revenue'], 0, ',', '.'); ?></td>
                         </tr>
