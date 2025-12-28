@@ -68,8 +68,10 @@ Memiliki keunggulan yaitu terdapat diskon untuk member baru, berlangganan, serta
 **15. User-Riwayat**
 <img width="1920" height="2225" alt="Riwayat-Pesanan-12-27-2025_08_00_PM" src="https://github.com/user-attachments/assets/86f2fa93-52bb-4da0-86b8-71a214c68412" />
 
+**Hak Akses**
 
 | Email | Password | Role |
 | :--- | :---: | ---: |
 | admin@cleantech.id | admin123 | admin |
 | indika3434@gmail.com | indika123 | pelanggan |
+
