@@ -14,6 +14,7 @@ $user_id = $_SESSION['user_id'];
 // Filter parameters
 $filter_status = isset($_GET['status']) ? clean_input($_GET['status']) : '';
 $filter_month = isset($_GET['month']) ? clean_input($_GET['month']) : date('Y-m');
+$show_subscription = isset($_GET['subscription']) ? true : false;
 
 // Build query
 $query = "SELECT o.*, s.name as service_name, s.duration_hours 
@@ -33,6 +34,10 @@ if ($filter_month) {
     $query .= " AND DATE_FORMAT(o.created_at, '%Y-%m') = ?";
     $params[] = $filter_month;
     $types .= "s";
+}
+
+if ($show_subscription) {
+    $query .= " AND o.is_monthly_subscription = 1";
 }
 
 $query .= " ORDER BY o.created_at DESC";
@@ -66,6 +71,30 @@ while ($row = mysqli_fetch_assoc($count_result)) {
     $status_counts['all'] += $row['count'];
 }
 
+// Get subscription stats
+$subscription_query = "SELECT 
+    COUNT(*) as total_subscription,
+    SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_subscription
+    FROM orders 
+    WHERE user_id = ? AND is_monthly_subscription = 1";
+$stmt = mysqli_prepare($conn, $subscription_query);
+mysqli_stmt_bind_param($stmt, "i", $user_id);
+mysqli_stmt_execute($stmt);
+$subscription_result = mysqli_stmt_get_result($stmt);
+$subscription_stats = mysqli_fetch_assoc($subscription_result);
+
+// Get discount stats
+$discount_query = "SELECT 
+    COUNT(*) as total_with_discount,
+    SUM(discount) as total_discount_amount
+    FROM orders 
+    WHERE user_id = ? AND discount > 0";
+$stmt = mysqli_prepare($conn, $discount_query);
+mysqli_stmt_bind_param($stmt, "i", $user_id);
+mysqli_stmt_execute($stmt);
+$discount_result = mysqli_stmt_get_result($stmt);
+$discount_stats = mysqli_fetch_assoc($discount_result);
+
 include '../includes/header.php';
 ?>
 
@@ -75,54 +104,107 @@ include '../includes/header.php';
 </div>
 
 <!-- Stats Overview -->
-<div class="grid grid-6" style="gap: 0.5rem; margin-bottom: 2rem;">
-    <a href="?status=" class="card" style="text-decoration: none; text-align: center; padding: 1rem;">
-        <div style="font-size: 1.5rem; font-weight: bold; color: var(--primary-color);">
-            <?php echo $status_counts['all']; ?>
-        </div>
-        <div style="font-size: 0.9rem; color: #666;">Semua</div>
-    </a>
+<div style="margin-bottom: 2rem;">
+    <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+        <!-- All Orders -->
+        <a href="?status=" class="card" style="text-decoration: none; text-align: center; padding: 1.5rem; border-left: 4px solid var(--primary-color);">
+            <div style="font-size: 2rem; font-weight: bold; color: var(--primary-color);">
+                <?php echo $status_counts['all']; ?>
+            </div>
+            <div style="font-size: 0.9rem; color: #666; margin-top: 0.5rem;">Total Pesanan</div>
+        </a>
 
-    <a href="?status=pending" class="card" style="text-decoration: none; text-align: center; padding: 1rem;">
-        <div style="font-size: 1.5rem; font-weight: bold; color: var(--warning-color);">
-            <?php echo $status_counts['pending']; ?>
-        </div>
-        <div style="font-size: 0.9rem; color: #666;">Pending</div>
-    </a>
+        <!-- Subscription Orders -->
+        <a href="?subscription=1" class="card" style="text-decoration: none; text-align: center; padding: 1.5rem; border-left: 4px solid #ff9800;">
+            <div style="font-size: 2rem; font-weight: bold; color: #ff9800;">
+                <?php echo $subscription_stats['total_subscription'] ?? 0; ?>
+            </div>
+            <div style="font-size: 0.9rem; color: #666; margin-top: 0.5rem;">Langganan</div>
+            <?php if ($subscription_stats['total_subscription'] > 0): ?>
+                <div style="font-size: 0.8rem; color: #666; margin-top: 0.25rem;">
+                    <?php echo $subscription_stats['completed_subscription']; ?> selesai
+                </div>
+            <?php endif; ?>
+        </a>
 
-    <a href="?status=confirmed" class="card" style="text-decoration: none; text-align: center; padding: 1rem;">
-        <div style="font-size: 1.5rem; font-weight: bold; color: var(--info-color);">
-            <?php echo $status_counts['confirmed']; ?>
+        <!-- Discount Stats -->
+        <div class="card" style="text-align: center; padding: 1.5rem; border-left: 4px solid var(--success-color);">
+            <div style="font-size: 2rem; font-weight: bold; color: var(--success-color);">
+                <?php echo $discount_stats['total_with_discount'] ?? 0; ?>
+            </div>
+            <div style="font-size: 0.9rem; color: #666; margin-top: 0.5rem;">Dengan Diskon</div>
+            <?php if ($discount_stats['total_discount_amount'] > 0): ?>
+                <div style="font-size: 0.8rem; color: #666; margin-top: 0.25rem;">
+                    Hemat: Rp <?php echo number_format($discount_stats['total_discount_amount'], 0, ',', '.'); ?>
+                </div>
+            <?php endif; ?>
         </div>
-        <div style="font-size: 0.9rem; color: #666;">Dikonfirmasi</div>
-    </a>
 
-    <a href="?status=processing" class="card" style="text-decoration: none; text-align: center; padding: 1rem;">
-        <div style="font-size: 1.5rem; font-weight: bold; color: #17a2b8;">
-            <?php echo $status_counts['processing']; ?>
+        <!-- Status Stats -->
+        <div class="card" style="padding: 1.5rem; border-left: 4px solid #17a2b8;">
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; text-align: center;">
+                <div>
+                    <div style="font-size: 1.5rem; font-weight: bold; color: var(--warning-color);">
+                        <?php echo $status_counts['pending']; ?>
+                    </div>
+                    <div style="font-size: 0.75rem; color: #666;">Pending</div>
+                </div>
+                <div>
+                    <div style="font-size: 1.5rem; font-weight: bold; color: var(--info-color);">
+                        <?php echo $status_counts['confirmed'] + $status_counts['processing']; ?>
+                    </div>
+                    <div style="font-size: 0.75rem; color: #666;">Diproses</div>
+                </div>
+                <div>
+                    <div style="font-size: 1.5rem; font-weight: bold; color: var(--success-color);">
+                        <?php echo $status_counts['completed']; ?>
+                    </div>
+                    <div style="font-size: 0.75rem; color: #666;">Selesai</div>
+                </div>
+            </div>
         </div>
-        <div style="font-size: 0.9rem; color: #666;">Diproses</div>
-    </a>
+    </div>
+</div>
 
-    <a href="?status=completed" class="card" style="text-decoration: none; text-align: center; padding: 1rem;">
-        <div style="font-size: 1.5rem; font-weight: bold; color: var(--success-color);">
-            <?php echo $status_counts['completed']; ?>
-        </div>
-        <div style="font-size: 0.9rem; color: #666;">Selesai</div>
-    </a>
-
-    <a href="?status=cancelled" class="card" style="text-decoration: none; text-align: center; padding: 1rem;">
-        <div style="font-size: 1.5rem; font-weight: bold; color: var(--danger-color);">
-            <?php echo $status_counts['cancelled']; ?>
-        </div>
-        <div style="font-size: 0.9rem; color: #666;">Dibatalkan</div>
-    </a>
+<!-- Quick Status Filter -->
+<div style="margin-bottom: 2rem;">
+    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+        <a href="?status="
+            class="btn <?php echo $filter_status == '' ? 'btn-primary' : 'btn-secondary'; ?>">
+            Semua (<?php echo $status_counts['all']; ?>)
+        </a>
+        <a href="?status=pending"
+            class="btn <?php echo $filter_status == 'pending' ? 'btn-primary' : 'btn-secondary'; ?>"
+            style="background-color: <?php echo $filter_status == 'pending' ? '#ffc107' : 'transparent'; ?>; color: <?php echo $filter_status == 'pending' ? '#000' : 'var(--primary-color)'; ?>;">
+            Pending (<?php echo $status_counts['pending']; ?>)
+        </a>
+        <a href="?status=confirmed"
+            class="btn <?php echo $filter_status == 'confirmed' ? 'btn-primary' : 'btn-secondary'; ?>"
+            style="background-color: <?php echo $filter_status == 'confirmed' ? '#17a2b8' : 'transparent'; ?>; color: <?php echo $filter_status == 'confirmed' ? '#fff' : 'var(--primary-color)'; ?>;">
+            Dikonfirmasi (<?php echo $status_counts['confirmed']; ?>)
+        </a>
+        <a href="?status=processing"
+            class="btn <?php echo $filter_status == 'processing' ? 'btn-primary' : 'btn-secondary'; ?>"
+            style="background-color: <?php echo $filter_status == 'processing' ? '#007bff' : 'transparent'; ?>; color: <?php echo $filter_status == 'processing' ? '#fff' : 'var(--primary-color)'; ?>;">
+            Diproses (<?php echo $status_counts['processing']; ?>)
+        </a>
+        <a href="?status=completed"
+            class="btn <?php echo $filter_status == 'completed' ? 'btn-primary' : 'btn-secondary'; ?>"
+            style="background-color: <?php echo $filter_status == 'completed' ? '#28a745' : 'transparent'; ?>; color: <?php echo $filter_status == 'completed' ? '#fff' : 'var(--primary-color)'; ?>;">
+            Selesai (<?php echo $status_counts['completed']; ?>)
+        </a>
+        <a href="?subscription=1"
+            class="btn <?php echo $show_subscription ? 'btn-primary' : 'btn-secondary'; ?>"
+            style="background-color: <?php echo $show_subscription ? '#ff9800' : 'transparent'; ?>; color: <?php echo $show_subscription ? '#fff' : 'var(--primary-color)'; ?>;">
+            Langganan (<?php echo $subscription_stats['total_subscription'] ?? 0; ?>)
+        </a>
+    </div>
 </div>
 
 <!-- Filters -->
 <div class="card" style="margin-bottom: 2rem;">
     <div class="card-body">
-        <form method="GET" action="" style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 1rem; align-items: end;">
+        <form method="GET" action="" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; align-items: end;">
             <div class="form-group">
                 <label class="form-label" for="status">Filter Status</label>
                 <select id="status" name="status" class="form-control">
@@ -150,8 +232,18 @@ include '../includes/header.php';
 
 <!-- Orders Table -->
 <div class="card">
-    <div class="card-header">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
         <h3 style="color: white; margin: 0;">Daftar Pesanan</h3>
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <?php if ($show_subscription): ?>
+                <span style="color: white; font-size: 0.9rem; background-color: #ff9800; padding: 0.25rem 0.5rem; border-radius: 3px;">
+                    📅 Hanya Menampilkan Langganan
+                </span>
+            <?php endif; ?>
+            <span style="color: white; font-size: 0.9rem;">
+                Total: <?php echo mysqli_num_rows($orders_result); ?> pesanan
+            </span>
+        </div>
     </div>
     <div class="card-body">
         <?php if (mysqli_num_rows($orders_result) > 0): ?>
@@ -173,13 +265,34 @@ include '../includes/header.php';
                         <?php while ($order = mysqli_fetch_assoc($orders_result)): ?>
                             <tr>
                                 <td>
-                                    <strong><?php echo htmlspecialchars($order['order_code']); ?></strong>
-                                    <?php if ($order['discount'] > 0): ?>
-                                        <br><small style="color: var(--success-color);">✅ Diskon diterapkan</small>
-                                    <?php endif; ?>
+                                    <div style="font-weight: bold; color: var(--primary-color);">
+                                        <?php echo htmlspecialchars($order['order_code']); ?>
+                                    </div>
+                                    <div style="display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.25rem;">
+                                        <?php if ($order['discount'] > 0): ?>
+                                            <span style="background-color: var(--success-color); color: white; padding: 0.1rem 0.3rem; border-radius: 3px; font-size: 0.7rem;">
+                                                ✅ Diskon
+                                            </span>
+                                        <?php endif; ?>
+                                        <?php if ($order['is_monthly_subscription']): ?>
+                                            <span style="background-color: #ff9800; color: white; padding: 0.1rem 0.3rem; border-radius: 3px; font-size: 0.7rem;">
+                                                📅 Langganan
+                                            </span>
+                                        <?php endif; ?>
+                                        <?php if ($order['parent_order_id']): ?>
+                                            <span style="background-color: #6f42c1; color: white; padding: 0.1rem 0.3rem; border-radius: 3px; font-size: 0.7rem;">
+                                                🔄 Jadwal
+                                            </span>
+                                        <?php endif; ?>
+                                    </div>
                                 </td>
                                 <td><?php echo htmlspecialchars($order['service_name']); ?></td>
-                                <td><?php echo date('d/m/Y', strtotime($order['order_date'])); ?></td>
+                                <td>
+                                    <div><?php echo date('d/m/Y', strtotime($order['order_date'])); ?></div>
+                                    <div style="font-size: 0.8rem; color: #666;">
+                                        <?php echo date('d/m', strtotime($order['created_at'])); ?>
+                                    </div>
+                                </td>
                                 <td><?php echo substr($order['order_time'], 0, 5); ?></td>
                                 <td>
                                     <?php
@@ -220,20 +333,33 @@ include '../includes/header.php';
                                     </span>
                                 </td>
                                 <td>
-                                    <div>Rp <?php echo number_format($order['final_price'], 0, ',', '.'); ?></div>
+                                    <div style="font-weight: bold; color: var(--primary-color);">
+                                        Rp <?php echo number_format($order['final_price'], 0, ',', '.'); ?>
+                                    </div>
                                     <?php if ($order['discount'] > 0): ?>
-                                        <small style="color: var(--success-color);">
-                                            Diskon: Rp <?php echo number_format($order['discount'], 0, ',', '.'); ?>
-                                        </small>
+                                        <div style="font-size: 0.8rem; color: var(--success-color);">
+                                            Hemat: Rp <?php echo number_format($order['discount'], 0, ',', '.'); ?>
+                                        </div>
+                                    <?php endif; ?>
+                                    <?php if ($order['is_monthly_subscription'] && $order['subscription_months'] > 1): ?>
+                                        <div style="font-size: 0.8rem; color: #ff9800;">
+                                            <?php echo $order['subscription_months']; ?> bulan
+                                        </div>
                                     <?php endif; ?>
                                 </td>
                                 <td>
-                                    <button onclick="viewOrderDetail(<?php echo $order['id']; ?>)"
-                                        class="btn btn-sm btn-secondary">Detail</button>
-                                    <?php if ($order['status'] == 'pending'): ?>
-                                        <button onclick="cancelOrder(<?php echo $order['id']; ?>)"
-                                            class="btn btn-sm btn-danger">Batal</button>
-                                    <?php endif; ?>
+                                    <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                                        <button onclick="viewOrderDetail(<?php echo $order['id']; ?>)"
+                                            class="btn btn-sm btn-secondary" style="width: 100%;">
+                                            Detail
+                                        </button>
+                                        <?php if ($order['status'] == 'pending'): ?>
+                                            <button onclick="cancelOrder(<?php echo $order['id']; ?>)"
+                                                class="btn btn-sm btn-danger" style="width: 100%;">
+                                                Batal
+                                            </button>
+                                        <?php endif; ?>
+                                    </div>
                                 </td>
                             </tr>
                         <?php endwhile; ?>
@@ -242,8 +368,22 @@ include '../includes/header.php';
             </div>
         <?php else: ?>
             <div style="text-align: center; padding: 3rem;">
-                <p style="color: #666; font-size: 1.1rem;">Belum ada pesanan</p>
-                <a href="/clean-tech/user/order.php" class="btn btn-primary">Buat Pesanan Pertama</a>
+                <p style="color: #666; font-size: 1.1rem;">
+                    <?php if ($show_subscription): ?>
+                        Belum ada pesanan langganan
+                    <?php elseif ($filter_status): ?>
+                        Tidak ada pesanan dengan status "<?php echo $filter_status; ?>"
+                    <?php else: ?>
+                        Belum ada pesanan
+                    <?php endif; ?>
+                </p>
+                <a href="/clean-tech/user/order.php" class="btn btn-primary">
+                    <?php if ($show_subscription): ?>
+                        Pesan Langganan
+                    <?php else: ?>
+                        Buat Pesanan Pertama
+                    <?php endif; ?>
+                </a>
             </div>
         <?php endif; ?>
     </div>
@@ -278,7 +418,7 @@ include '../includes/header.php';
                         <h4 style="color: var(--primary-color); margin-bottom: 0.5rem;">Informasi Pesanan</h4>
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
                             <div><strong>Kode Pesanan:</strong></div>
-                            <div>${order.order_code}</div>
+                            <div style="font-weight: bold; color: var(--primary-color);">${order.order_code}</div>
                             
                             <div><strong>Layanan:</strong></div>
                             <div>${order.service_name}</div>
@@ -297,12 +437,35 @@ include '../includes/header.php';
                             
                             <div><strong>Metode:</strong></div>
                             <div>${getPaymentMethodText(order.payment_method)}</div>
+                    `;
+
+                    if (order.is_monthly_subscription) {
+                        content += `
+                            <div><strong>Tipe:</strong></div>
+                            <div><span class="badge" style="background-color: #ff9800; color: white;">Langganan</span></div>
                             
+                            <div><strong>Jumlah Bulan:</strong></div>
+                            <div>${order.subscription_months || 1} bulan</div>
+                        `;
+                    }
+
+                    if (order.discount_type) {
+                        content += `
+                            <div><strong>Diskon:</strong></div>
+                            <div style="color: var(--success-color); font-weight: bold;">
+                                ${order.discount_type == 'new_customer' ? 'Pelanggan Baru (15%)' : 
+                                  order.discount_type == 'monthly' ? 'Langganan (20%)' :
+                                  order.discount_type == 'loyalty' ? 'Loyalty (30%)' : order.discount_type}
+                            </div>
+                        `;
+                    }
+
+                    content += `
                             <div><strong>Harga:</strong></div>
                             <div>Rp ${parseInt(order.total_price).toLocaleString('id-ID')}</div>
                             
                             <div><strong>Diskon:</strong></div>
-                            <div>Rp ${parseInt(order.discount).toLocaleString('id-ID')}</div>
+                            <div style="color: var(--success-color);">- Rp ${parseInt(order.discount).toLocaleString('id-ID')}</div>
                             
                             <div><strong>Total Bayar:</strong></div>
                             <div style="font-weight: bold; color: var(--primary-color);">Rp ${parseInt(order.final_price).toLocaleString('id-ID')}</div>
@@ -314,7 +477,9 @@ include '../includes/header.php';
                         content += `
                         <div style="margin-bottom: 1.5rem;">
                             <h4 style="color: var(--primary-color); margin-bottom: 0.5rem;">Catatan</h4>
-                            <p>${order.notes}</p>
+                            <div style="background-color: #f8f9fa; padding: 1rem; border-radius: 8px;">
+                                <p style="margin: 0;">${order.notes}</p>
+                            </div>
                         </div>
                     `;
                     }
@@ -327,7 +492,7 @@ include '../includes/header.php';
                                 ${history.map(item => `
                                     <div style="position: relative; margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid #eee;">
                                         <div style="position: absolute; left: -1.5rem; top: 0; width: 12px; height: 12px; background-color: var(--primary-color); border-radius: 50%;"></div>
-                                        <div style="font-weight: 500;">${item.status}</div>
+                                        <div style="font-weight: 500;">${formatStatus(item.status)}</div>
                                         <div style="font-size: 0.9rem; color: #666;">${item.notes}</div>
                                         <div style="font-size: 0.8rem; color: #999;">${formatDateTime(item.created_at)}</div>
                                     </div>
@@ -396,6 +561,20 @@ include '../includes/header.php';
         });
     }
 
+    function formatStatus(status) {
+        const statusMap = {
+            'pending': 'Pending',
+            'confirmed': 'Dikonfirmasi',
+            'processing': 'Diproses',
+            'completed': 'Selesai',
+            'cancelled': 'Dibatalkan',
+            'payment_uploaded': 'Bukti Pembayaran Diupload',
+            'payment_verified': 'Pembayaran Diverifikasi',
+            'payment_rejected': 'Pembayaran Ditolak'
+        };
+        return statusMap[status] || status.replace(/_/g, ' ');
+    }
+
     function getStatusColor(status) {
         const colors = {
             'pending': 'badge-warning',
@@ -440,7 +619,13 @@ include '../includes/header.php';
         const texts = {
             'transfer_bank': 'Transfer Bank',
             'e_wallet': 'E-Wallet',
-            'cash': 'Cash'
+            'cash': 'Cash',
+            'bca': 'BCA',
+            'mandiri': 'Mandiri',
+            'bni': 'BNI',
+            'gopay': 'GoPay',
+            'ovo': 'OVO',
+            'dana': 'DANA'
         };
         return texts[method] || method;
     }
